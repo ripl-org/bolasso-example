@@ -96,7 +96,7 @@ class Features(object):
         if missing_training_mask.any():
             dummy_name = sanitize_name(f"{feature_name}_MISSING")
             assert dummy_name not in self.X.columns, dummy_name
-            self.X[dummy_name] = missing_mask
+            self.X[dummy_name] = missing_mask.astype(int)
         new_name = sanitize_name(feature_name)
         assert new_name not in self.X.columns, new_name
         self.X[new_name] = self.X[feature_name]
@@ -166,8 +166,10 @@ class Features(object):
         interaction_name = f"{feature1}_X_{feature2}"
         assert interaction_name not in self.X.columns, interaction_name
         interaction = self.X[feature1] * self.X[feature2]
-        if len(interaction.unique()) == 1:
+        if len(interaction.loc[self.training_mask].unique()) == 1:
             print("WARNING: dropping empty interaction", interaction_name)
+        elif interaction.equals(self.X[feature1]) or interaction.equals(self.X[feature2]):
+            print("WARNING: dropping redundant interaction", interaction_name) 
         else:
             self.X[interaction_name] = interaction
 

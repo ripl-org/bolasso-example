@@ -11,3 +11,17 @@ env.Command(
     ],
     action="python $SOURCES $TARGETS"
 )
+
+env.Command(
+    target=[
+        "scratch/top-correlations.csv",
+        "scratch/model-matrix.Rdata"
+    ],
+    source=[
+        "model-matrix.R",
+        Value("salary_50k"),
+        Value("subset"),
+        "scratch/features.csv"
+    ],
+    action="Rscript $SOURCES $TARGETS"
+)
