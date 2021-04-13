@@ -4,7 +4,7 @@ This worked example illustrates a machine-learning approach to predictive modeli
 
 1. Perform a BOLASSO (Bach 2008): sample *N* bootstrap replicates from the data and fit a cross-validated LASSO model to each bootstrap replicate.
 2. Select the variables that have non-zero coefficients in *at least 90% of the BOLASSO models*.
-3. Fit a *simple linear regression* to the selected variables, which is called the post-BOLASSO model and describes the strongest consistent predictors. 
+3. Fit a *simple linear regression* to the selected variables, which is called the post-LASSO model and describes the strongest consistent predictors. 
 4. Create an ensemble model by *averaging the coefficients across the BOLASSO models*. This is analagous to a random forest in its use of bootstrap aggregation (e.g. "bagging"), except that the individual models that make up the forest are regularized linear models instead of decision trees.
 
 ## How to Run
@@ -57,7 +57,7 @@ The BOLASSO selects 43 of the features as consistent predictors of whether an in
 
 BOLASSO helps to identify consistent predictors, avoiding arbitrary choices among highly correlated pairs. While the post-LASSO coefficients on the selected variables do not necessarily have a causal interpretation, they can be interpreted as the factors that are the strongest predictors among observables, and can point to potential underlying mechanisms for further study. The post-LASSO coefficients can be found in `scratch/post-lasso-coefficients.csv`.
 
-The ensemble model has 177 non-zero coefficients, found in `scratch/bolasso-ensemble-coefficients.csv`. The ensemble model is simply another linear model with the averaged coefficients (including zeros) from the BOLASSO models.
+The ensemble model has 167 non-zero coefficients, found in `scratch/bolasso-ensemble-coefficients.csv`. The ensemble model is simply another linear model with the averaged coefficients (including zeros) from the BOLASSO models.
 
 Both the post-LASSO and ensemble models allow us to fit a flexible functional form to the data in a similar way to a random forest or neural network, but with models that are easier to interpet in the sense that they are linear and provide coefficients that summarize the contribution of each variable, interaction and higher-order term.
 
