@@ -8,9 +8,10 @@ n <- length(args)
 
 outcome_name  <- args[1]
 subset_name   <- args[2]
-feature_file  <- args[3]
-corr_file     <- args[4]
-matrix_file   <- args[5]
+weights_name  <- args[3]
+feature_file  <- args[4]
+corr_file     <- args[5]
+matrix_file   <- args[6]
 
 cat("Loading features file\n")
 
@@ -29,20 +30,36 @@ cat("Found", sum(test), "testing observations\n")
 features <- features[,(subset_name):=NULL] # Remove subset column
 
 cat("Validating features\n")
+constant = c()
 for (name in colnames(features)) {
     x <- features[,get(name)]
-    type <- class(x)
-    assert_that(
-        type == "numeric" || type == "integer",
-        msg=paste(name, "has type", type, "instead of numeric/integer")
-    )
-    assert_that(!any(is.na(x)), msg=paste(name, "has NA values"))
+    if (length(unique(x)) == 1) {
+        constant = c(constant, name)
+    } else {
+        type <- class(x)
+        assert_that(
+            type == "numeric" || type == "integer",
+            msg=paste(name, "has type", type, "instead of numeric/integer")
+        )
+        assert_that(!any(is.na(x)), msg=paste(name, "has NA values"))
+    }
+}
+
+cat("Dropping", nrow(constant), "features that are constant in training data\n")
+
+for (name in constant) {
+    features <- features[,(name):=NULL]
 }
 
 cat("Extracting outcome vector\n")
 
 y <- features[,get(outcome_name)]
 features <- features[,(outcome_name):=NULL] # Remove outcomes column
+
+cat("Extracting weights vector\n")
+
+weights <- features[,get(weights_name)]
+features <- features[,(weights_name):=NULL] # Remove weights column
 
 cat("Creating sparse model matrix\n")
 
@@ -92,4 +109,4 @@ write.csv(top, file=corr_file)
 
 cat("Saving\n")
 
-save(X_train, X_test, y, train, test, file=matrix_file)
+save(X_train, X_test, y, weights, train, test, file=matrix_file)

@@ -29,12 +29,11 @@ def main():
     features.continuous("age", squared=True, cubed=True)
     features.continuous("hours_per_week", squared=True, cubed=True)
 
-    # Expand censored continuous features into extensive and intensive margins.
-    features.censored("capital_gain")
-    features.censored("capital_loss")
+    # Expand hurdle features into extensive and intensive margins.
+    features.hurdle("capital_gain", log=True)
+    features.hurdle("capital_loss", log=True)
 
     # Drop unused features
-    features.drop("fnlwgt")
     features.drop("education_num")
 
     # Add all pairwise interactions
@@ -83,7 +82,7 @@ class Features(object):
             self.feature_map[feature_name].append(dummy_name)
         self.drop(feature_name)
 
-    def continuous(self, feature_name, squared=False, cubed=False):
+    def continuous(self, feature_name, squared=False, cubed=False, log=False, topcode=False):
         """
         Center continuous values at mean=0 and standardize to sd=1.
         Create missing indicator and mean-impute missing values.
@@ -97,6 +96,15 @@ class Features(object):
             dummy_name = sanitize_name(f"{feature_name}_MISSING")
             assert dummy_name not in self.X.columns, dummy_name
             self.X[dummy_name] = missing_mask.astype(int)
+        # Top code
+        if topcode:
+            assert 0 < topcode and topcode < 1
+            t = np.quantile(self.X.loc[self.training_mask, feature_name], topcode)
+            self.X.loc[self.X[feature_name] >= t, feature_name] = t
+        # Log transform
+        if log:
+            self.X.loc[:, feature_name] = np.log(self.X[feature_name])
+        # Sanitize name
         new_name = sanitize_name(feature_name)
         assert new_name not in self.X.columns, new_name
         self.X[new_name] = self.X[feature_name]
@@ -120,28 +128,29 @@ class Features(object):
                 self.X.loc[:, name] = self.X[name].subtract(mean).divide(stdev)
             else:
                 print(f"WARNING: {name} has 0 stdev")
-            self.X[name].fillna(mean, inplace=True)
+            self.X[name].fillna(0, inplace=True)
             self.feature_map[feature_name].append(name)
         self.drop(feature_name)
 
-    def censored(self, feature_name, value=0, squared=False, cubed=False):
+    def hurdle(self, feature_name, value=0, squared=False, cubed=False, log=False, topcode=False):
         """
-        Expand censored continuous features into extensive and intensive
-        margins. Treat the intensive margin as a continuous feature.
+        Expand a "hurdle" variable into into extensive and intensive
+        margins. The extensive margin becomes a dummy variable and the
+        the intensive margin a continuous feature.
         """
         assert feature_name in self.outstanding_features, feature_name
-        censor_mask = (self.X[feature_name] <= value).astype(int)
-        if censor_mask.loc[self.training_mask].any():  
+        hurdle_mask = (self.X[feature_name] <= value)
+        if hurdle_mask.loc[self.training_mask].any():  
             dummy_name = sanitize_name(f"{feature_name}_NONZERO")
             assert dummy_name not in self.X.columns, dummy_name
             self.X[dummy_name] = (self.X[feature_name] > value).astype(int)
             self.feature_map[feature_name].append(dummy_name)
-        self.X.loc[censor_mask, feature_name] = np.NaN
-        self.continuous(feature_name, squared=squared, cubed=cubed)
-        # Correct missing flag by removing censor mask
-        if censor_mask.any():
+        self.X.loc[hurdle_mask, feature_name] = np.NaN
+        self.continuous(feature_name, squared=squared, cubed=cubed, log=log, topcode=topcode)
+        # Correct missing flag by removing the hurdle mask
+        if hurdle_mask.any():
             dummy_name = sanitize_name(f"{feature_name}_MISSING")
-            self.X.loc[censor_mask, dummy_name] = 0
+            self.X.loc[hurdle_mask, dummy_name] = 0
 
     def interactions(self):
         """
