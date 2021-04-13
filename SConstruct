@@ -6,6 +6,11 @@ N_BOOTSTRAP = 100
 RANDOM_SEED = 9477179
 BOLASSO_THRESHOLD = 0.9
 
+# The SCons cache stores previously calculated results, and the cache directory can
+# be shared among collaborators to accelerate calculations, since the first person to
+# build caches the results for others to retrieve.
+env.CacheDir("cache")
+
 # Feature engineering
 env.Command(
     target="scratch/features.csv",
@@ -27,6 +32,7 @@ env.Command(
         "model-matrix.R",
         Value("salary_50k"),
         Value("subset"),
+        Value("fnlwgt"),
         "scratch/features.csv"
     ],
     action="Rscript $SOURCES $TARGETS"
@@ -51,6 +57,7 @@ for i in range(1, N_BOOTSTRAP+1):
 # BOLASSO selection
 env.Command(
     target=[
+        "scratch/bolasso-ensemble-coefficients.csv",
         "scratch/bolasso-frequencies.csv",
         "scratch/bolasso-selection.csv"
     ],
@@ -86,4 +93,24 @@ env.Command(
         "scratch/bolasso-selection.csv"
     ],
     action="Rscript $SOURCES $TARGETS"
+)
+
+# Codebooks
+env.Command(
+    target=[
+        "scratch/train_codebook.html"
+    ],
+    source=[
+        "data/uci-adult-train.csv"
+    ],
+    action="codebooks --na_values ? --output $TARGET $SOURCE"
+)
+env.Command(
+    target=[
+        "scratch/features_codebook.html"
+    ],
+    source=[
+        "scratch/features.csv"
+    ],
+    action="codebooks --output $TARGET $SOURCE"
 )
