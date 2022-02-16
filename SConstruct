@@ -13,7 +13,10 @@ env.CacheDir("cache")
 
 # Feature engineering
 env.Command(
-    target="scratch/features.csv",
+    target=[
+        "scratch/features.csv",
+        "scratch/features.csc.gz"
+    ],
     source=[
         "feature-engineering.py",
         "data/uci-adult-train.csv",
@@ -30,10 +33,8 @@ env.Command(
     ],
     source=[
         "model-matrix.R",
-        Value("salary_50k"),
-        Value("subset"),
-        Value("fnlwgt"),
-        "scratch/features.csv"
+        "scratch/features.csv",
+        "scratch/features.csc.gz"
     ],
     action="Rscript $SOURCES $TARGETS"
 )
@@ -104,13 +105,4 @@ env.Command(
         "data/uci-adult-train.csv"
     ],
     action="codebooks --na_values ? --output $TARGET $SOURCE"
-)
-env.Command(
-    target=[
-        "scratch/features_codebook.html"
-    ],
-    source=[
-        "scratch/features.csv"
-    ],
-    action="codebooks --output $TARGET $SOURCE"
 )

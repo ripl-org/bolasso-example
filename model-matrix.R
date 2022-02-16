@@ -6,65 +6,74 @@ library(tidyverse)
 args <- commandArgs(trailingOnly=TRUE)
 n <- length(args)
 
-outcome_name  <- args[1]
-subset_name   <- args[2]
-weights_name  <- args[3]
-feature_file  <- args[4]
-corr_file     <- args[5]
-matrix_file   <- args[6]
+features_file <- args[1]
+csc_file      <- args[2]
+corr_file     <- args[3]
+matrix_file   <- args[4]
 
 cat("Loading features file\n")
 
-features <- fread(feature_file)
+features <- fread(features_file)
 
-cat("Loaded", nrow(features), "rows X", ncol(features), "columns\n")
+cat("Creating training/testing flags\n")
 
-cat("Creating training/testing sets\n")
-
-train <- features[,get(subset_name)] == "TRAIN"
+train <- features[,1] == "TRAIN"
 cat("Found", sum(train), "training observations\n")
 
-test <- features[,get(subset_name)] == "TEST"
+test <- features[,1] == "TEST"
 cat("Found", sum(test), "testing observations\n")
-
-features <- features[,(subset_name):=NULL] # Remove subset column
-
-cat("Validating features\n")
-constant = c()
-for (name in colnames(features)) {
-    x <- features[,get(name)]
-    if (length(unique(x)) == 1) {
-        constant = c(constant, name)
-    } else {
-        type <- class(x)
-        assert_that(
-            type == "numeric" || type == "integer",
-            msg=paste(name, "has type", type, "instead of numeric/integer")
-        )
-        assert_that(!any(is.na(x)), msg=paste(name, "has NA values"))
-    }
-}
-
-cat("Dropping", nrow(constant), "features that are constant in training data\n")
-
-for (name in constant) {
-    features <- features[,(name):=NULL]
-}
 
 cat("Extracting outcome vector\n")
 
-y <- features[,get(outcome_name)]
-features <- features[,(outcome_name):=NULL] # Remove outcomes column
+y <- features[,2]
 
 cat("Extracting weights vector\n")
 
-weights <- features[,get(weights_name)]
-features <- features[,(weights_name):=NULL] # Remove weights column
+weights <- features[,3]
+
+cat("Loading compressed sparse columns\n")
+
+X_train <- list()
+X_test  <- list()
+names   <- list()
+
+csc <- gzfile(csc_file, "rt")
+
+# Read header line
+line <- scan(file=csc, nlines=1, what="character")
+assert_that(line[1] == "#csc")
+assert_that(line[2] == "start")
+n <- strtoi(gsub("nrow=", "", line[3]))
+
+# Read column lines
+line <- scan(file=csc, nlines=1, what="character")
+while (line[1] != "#csc") {
+    assert_that(line[1] == "column")
+    append(names, line[2])
+    index <- scan(file=csc, nlines=1, what="integer")
+    value <- scan(file=csc, nlines=1, what="numeric")
+    col <- sparseVector(value, index, n)
+    append(X_train, col[train])
+    append(X_test,  col[test] )
+    line <- scan(file=csc, nlines=1, what="character")
+}
+
+# Read ending line
+assert_that(line[1] == "#csc")
+assert_that(line[2] == "end")
+assert_that(length(cols) == strtoi(gsub("ncol=", "", line[3])))
+
+close(csc)
+
+cat("Loaded", n, "rows X", length(cols), "columns\n")
 
 cat("Creating sparse model matrix\n")
 
-X_train <- Matrix(as.matrix(features[train,]), sparse=TRUE)
-X_test <- Matrix(as.matrix(features[test,]), sparse=TRUE)
+X_train <- do.call(cBind, lapply(X_train, as, "sparseMatrix"))
+colnames(X_train) <- names
+
+X_test  <- do.call(cBind, lapply(X_test,  as, "sparseMatrix"))
+colnames(X_test)  <- names
 
 cat("Calculating top pairwise correlations for training features\n")
 
