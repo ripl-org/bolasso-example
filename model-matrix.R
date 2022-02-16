@@ -33,39 +33,39 @@ weights <- features[,3]
 
 cat("Loading compressed sparse columns\n")
 
-X_train <- list()
-X_test  <- list()
-names   <- list()
+X_train <- c()
+X_test  <- c()
+names   <- c()
 
 csc <- gzfile(csc_file, "rt")
 
 # Read header line
-line <- scan(file=csc, nlines=1, what="character")
+line <- scan(file=csc, nlines=1, what=character(), quiet=TRUE)
 assert_that(line[1] == "#csc")
 assert_that(line[2] == "start")
 n <- strtoi(gsub("nrow=", "", line[3]))
 
 # Read column lines
-line <- scan(file=csc, nlines=1, what="character")
+line <- scan(file=csc, nlines=1, what=character(), quiet=TRUE)
 while (line[1] != "#csc") {
     assert_that(line[1] == "column")
-    append(names, line[2])
-    index <- scan(file=csc, nlines=1, what="integer")
-    value <- scan(file=csc, nlines=1, what="numeric")
-    col <- sparseVector(value, index, n)
-    append(X_train, col[train])
-    append(X_test,  col[test] )
-    line <- scan(file=csc, nlines=1, what="character")
+    names <- c(names, line[2])
+    index <- scan(file=csc, nlines=1, what=integer(), quiet=TRUE) + 1 # Adjust for 1-based indexing
+    value <- scan(file=csc, nlines=1, what=numeric(), quiet=TRUE)
+    col <- sparseVector(x=value, i=index, length=n)
+    X_train <- c(X_train, col[which(train)])
+    X_test  <- c(X_test,  col[which(test) ])
+    line <- scan(file=csc, nlines=1, what=character(), quiet=TRUE)
 }
 
 # Read ending line
 assert_that(line[1] == "#csc")
 assert_that(line[2] == "end")
-assert_that(length(cols) == strtoi(gsub("ncol=", "", line[3])))
+assert_that(length(names) == strtoi(gsub("ncol=", "", line[3])))
 
 close(csc)
 
-cat("Loaded", n, "rows X", length(cols), "columns\n")
+cat("Loaded", n, "rows X", length(names), "columns\n")
 
 cat("Creating sparse model matrix\n")
 

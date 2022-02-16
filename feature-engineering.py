@@ -1,3 +1,4 @@
+import gzip
 import pandas as pd
 import numpy as np
 import re
@@ -12,7 +13,8 @@ def main():
 
     features = Features(
         training_data=pd.read_csv(sys.argv[1], na_values="?"),
-        testing_data=pd.read_csv(sys.argv[2], na_values="?")
+        testing_data=pd.read_csv(sys.argv[2], na_values="?"),
+        csc_file=sys.argv[4]
     )
 
     # Expand categorical values into dummy features
@@ -39,13 +41,16 @@ def main():
     # Add all pairwise interactions
     features.interactions()
 
-    # Write output
-    features.write(sys.argv[3])
+    # Close compressed sparse column file
+    features.close_csc()
+
+    # Write subset/outcome/weights variables to csv file
+    features.to_csv(["subset", "salary_50k", "fnlwgt"], sys.argv[3])
 
 
 class Features(object):
 
-    def __init__(self, training_data, testing_data):
+    def __init__(self, training_data, testing_data, csc_file):
         """
         Combine separate data frames for training/testing into
         a single data frame with a subset indicator.
@@ -59,6 +64,28 @@ class Features(object):
         self.training_mask = (self.X.subset == "TRAIN")
         self.outstanding_features = set(self.X.columns)
         self.feature_map = defaultdict(list) # Tracks sets of features for determining pairwise interactions
+        self.csc_file = gzip.open(csc_file, "wt")
+        self.csc_file.write("#csc start nrow={}\n".format(len(self.X)))
+        self.csc_columns = set()
+
+    def write_sparse_column(self, name, col=None):
+        """
+        Write a modified column as a sparse vector to the output file.
+        """
+        assert name not in self.csc_columns, name
+        if col is None:
+            col = self.X[name]
+        if len(col.loc[self.training_mask].unique()) == 1:
+            print(f"WARNING: dropping empty column {name}")
+        else:
+            col = col.astype(float).to_numpy()
+            index = col.nonzero()
+            self.csc_file.write(f"column {name}\n")
+            self.csc_file.write(" ".join(str(i) for i in index[0]))
+            self.csc_file.write("\n")
+            self.csc_file.write(" ".join("{:g}".format(x) for x in col[index]))
+            self.csc_file.write("\n")
+            self.csc_columns.add(name)
 
     def drop(self, feature_name):
         """
@@ -80,9 +107,10 @@ class Features(object):
             assert dummy_name not in self.X.columns, dummy_name
             self.X[dummy_name] = (self.X[feature_name] == value).astype(int)
             self.feature_map[feature_name].append(dummy_name)
+            self.write_sparse_column(dummy_name)
         self.drop(feature_name)
 
-    def continuous(self, feature_name, squared=False, cubed=False, log=False, topcode=False):
+    def continuous(self, feature_name, squared=False, cubed=False, log=False, topcode=False, missing=True):
         """
         Center continuous values at mean=0 and standardize to sd=1.
         Create missing indicator and mean-impute missing values.
@@ -92,10 +120,12 @@ class Features(object):
         # Create missing indicator
         missing_mask = self.X[feature_name].isna()
         missing_training_mask = (missing_mask & self.training_mask)
-        if missing_training_mask.any():
+        if missing and missing_training_mask.any():
             dummy_name = sanitize_name(f"{feature_name}_MISSING")
             assert dummy_name not in self.X.columns, dummy_name
             self.X[dummy_name] = missing_mask.astype(int)
+            self.feature_map[feature_name].append(dummy_name)
+            self.write_sparse_column(dummy_name)
         # Top code
         if topcode:
             assert 0 < topcode and topcode < 1
@@ -130,6 +160,7 @@ class Features(object):
                 print(f"WARNING: {name} has 0 stdev")
             self.X[name].fillna(0, inplace=True)
             self.feature_map[feature_name].append(name)
+            self.write_sparse_column(name)
         self.drop(feature_name)
 
     def hurdle(self, feature_name, value=0, squared=False, cubed=False, log=False, topcode=False):
@@ -139,18 +170,27 @@ class Features(object):
         the intensive margin a continuous feature.
         """
         assert feature_name in self.outstanding_features, feature_name
+        # Create missing indicator
+        missing_mask = self.X[feature_name].isna()
+        missing_training_mask = (missing_mask & self.training_mask)
+        if missing_training_mask.any():
+            dummy_name = sanitize_name(f"{feature_name}_MISSING")
+            assert dummy_name not in self.X.columns, dummy_name
+            self.X[dummy_name] = missing_mask.astype(int)
+            self.feature_map[feature_name].append(dummy_name)
+            self.write_sparse_column(dummy_name)
+        # Create non-zero indicator (intensive margin)
         hurdle_mask = (self.X[feature_name] <= value)
         if hurdle_mask.loc[self.training_mask].any():  
             dummy_name = sanitize_name(f"{feature_name}_NONZERO")
             assert dummy_name not in self.X.columns, dummy_name
             self.X[dummy_name] = (self.X[feature_name] > value).astype(int)
             self.feature_map[feature_name].append(dummy_name)
+            self.write_sparse_column(dummy_name)
+        # Create extensive margin
         self.X.loc[hurdle_mask, feature_name] = np.NaN
-        self.continuous(feature_name, squared=squared, cubed=cubed, log=log, topcode=topcode)
-        # Correct missing flag by removing the hurdle mask
-        if hurdle_mask.any():
-            dummy_name = sanitize_name(f"{feature_name}_MISSING")
-            self.X.loc[hurdle_mask, dummy_name] = 0
+        self.continuous(feature_name, squared=squared, cubed=cubed, log=log, topcode=topcode, missing=False)
+
 
     def interactions(self):
         """
@@ -173,23 +213,29 @@ class Features(object):
         assert feature1 in self.X.columns, feature1
         assert feature2 in self.X.columns, feature2
         interaction_name = f"{feature1}_X_{feature2}"
-        assert interaction_name not in self.X.columns, interaction_name
         interaction = self.X[feature1] * self.X[feature2]
         if len(interaction.loc[self.training_mask].unique()) == 1:
             print("WARNING: dropping empty interaction", interaction_name)
         elif interaction.equals(self.X[feature1]) or interaction.equals(self.X[feature2]):
             print("WARNING: dropping redundant interaction", interaction_name) 
         else:
-            self.X[interaction_name] = interaction
+            self.write_sparse_column(interaction_name, interaction)
 
-    def write(self, filename):
+    def close_csc(self):
         """
-        Write the features out to a csv file.
+        Write out the final line and close the output file.
         """
         if self.outstanding_features:
             print("WARNING: outstanding features that have not been processed:")
             print("\n".join(self.outstanding_features))
-        self.X.to_csv(filename, index=False)
+        self.csc_file.write("#csc end ncol={}\n".format(len(self.csc_columns)))
+        self.csc_file.close()
+
+    def to_csv(self, columns, filename):
+        """
+        Write the specified columns of X to a csv file.
+        """
+        self.X[columns].to_csv(filename, index=False)
 
 
 def sanitize_name(feature_name):
