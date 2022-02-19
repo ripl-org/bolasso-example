@@ -33,47 +33,59 @@ weights <- features[,3]
 
 cat("Loading compressed sparse columns\n")
 
-X_train <- c()
-X_test  <- c()
-names   <- c()
-
 csc <- gzfile(csc_file, "rt")
 
 # Read header line
 line <- scan(file=csc, nlines=1, what=character(), quiet=TRUE)
 assert_that(line[1] == "#csc")
 assert_that(line[2] == "start")
-n <- strtoi(gsub("nrow=", "", line[3]))
+N <- strtoi(gsub("nrow=", "", line[3])) # number of rows
+
+M <- 0 # number of columns
+names <- list()
+i <- list()
+j <- list()
+x <- list()
 
 # Read column lines
 line <- scan(file=csc, nlines=1, what=character(), quiet=TRUE)
 while (line[1] != "#csc") {
     assert_that(line[1] == "column")
-    names <- c(names, line[2])
-    index <- scan(file=csc, nlines=1, what=integer(), quiet=TRUE) + 1 # Adjust for 1-based indexing
-    value <- scan(file=csc, nlines=1, what=numeric(), quiet=TRUE)
-    col <- sparseVector(x=value, i=index, length=n)
-    X_train <- c(X_train, col[which(train)])
-    X_test  <- c(X_test,  col[which(test) ])
+    M <- M + 1
+    names[[M]] <- line[2]
+    i[[M]] <- scan(file=csc, nlines=1, what=integer(), quiet=TRUE) + 1 # Adjust for 1-based indexing
+    j[[M]] <- rep(M, length(i[[M]]))
+    x[[M]] <- scan(file=csc, nlines=1, what=numeric(), quiet=TRUE)
     line <- scan(file=csc, nlines=1, what=character(), quiet=TRUE)
 }
 
 # Read ending line
 assert_that(line[1] == "#csc")
 assert_that(line[2] == "end")
-assert_that(length(names) == strtoi(gsub("ncol=", "", line[3])))
+assert_that(M == strtoi(gsub("ncol=", "", line[3])))
 
 close(csc)
 
-cat("Loaded", n, "rows X", length(names), "columns\n")
+cat("Loaded", N, "rows X", M, "columns\n")
 
 cat("Creating sparse model matrix\n")
 
-X_train <- do.call(cBind, lapply(X_train, as, "sparseMatrix"))
-colnames(X_train) <- names
+i <- unlist(i)
+gc()
+j <- unlist(j)
+gc()
+x <- unlist(x)
+gc()
 
-X_test  <- do.call(cBind, lapply(X_test,  as, "sparseMatrix"))
-colnames(X_test)  <- names
+X <- sparseMatrix(i=i, j=j, x=x)
+colnames(X) <- names
+rm("i", "j", "x")
+gc()
+
+X_train <- X[which(train),]
+X_test  <- X[which(test), ]
+rm("X")
+gc()
 
 cat("Calculating top pairwise correlations for training features\n")
 
