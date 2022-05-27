@@ -1,4 +1,5 @@
 import os
+# import scons.distributed
 
 env = Environment(ENV=os.environ)
 
@@ -11,8 +12,10 @@ BOLASSO_THRESHOLD = 0.9
 # build caches the results for others to retrieve.
 env.CacheDir("cache")
 
+# env.DistributedSetup()
+
 # Feature engineering
-env.Command(
+env.DistributedCommand(
     target="scratch/features.csv",
     source=[
         "feature-engineering.py",
@@ -23,7 +26,7 @@ env.Command(
 )
 
 # Model matrix
-env.Command(
+env.DistributedCommand(
     target=[
         "scratch/top-correlations.csv",
         "scratch/model-matrix.Rdata"
@@ -40,7 +43,7 @@ env.Command(
 
 # BOLASSO replicates
 for i in range(1, N_BOOTSTRAP+1):
-    env.Command(
+    env.DistributedCommand(
         target=[
             f"scratch/bolasso/coefficients.{i}.csv",
             f"scratch/bolasso/predictions.{i}.csv"
@@ -81,7 +84,7 @@ env.Command(
 )
 
 # Post-LASSO
-env.Command(
+env.DistributedCommand(
     target=[
         "scratch/post-lasso-coefficients.csv",
         "scratch/post-lasso-predictions.csv"

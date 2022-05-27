@@ -25,6 +25,12 @@ The analysis is automated using the [SCons](https://scons.org/) software constru
 - scons
 - codebooks
 
+### Distributed Computing
+
+The analysis can distribute computation onto an EC2 instance in AWS. The instance is configured using the `env.DistributedSetup(instance_type=..., ami_id=...)` method that specifies the EC2 instance type and AMI to use. This method initializes the EC2 instance (as long as SCons is not in dry run mode). The AMI must include all software required by commands that will be distributed to the EC2 instance.
+
+Once initialized, commands can be distributed using the `env.DistributedCommand(...)` variant of the traditional `env.Command(...)` builder. The distributed builder copies all source files from local storage to the EC2 instance, remotely executes the command, and the copies all target files from the instance back to local storage.
+
 ## Data
 
 This example uses the [Adult](https://archive.ics.uci.edu/ml/datasets/Adult) (or "Census Income") data set from the UC Irvine Machine Learning Repository. Briefly, these are weighted data from the 1994 Census with 14 explanatory variables and a binary outcome variable for whether an individual earns more or less than $50,000 annually. The data have already been split into 32,561 training records (in `data/uci-adult-train.csv`) and 16,281 test records (in `data/uci-adult-test.csv`). The pipeline generates a codebook for the training data in `scratch/train_codebook.html`.
