@@ -13,7 +13,7 @@ The analysis is automated using the [SCons](https://scons.org/) software constru
 
 ### R Dependencies
 
-- tidyverse
+- stringr
 - data.table
 - gamlr
 - AUC

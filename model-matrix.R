@@ -1,7 +1,7 @@
 library(assertthat)
 library(data.table)
 library(Matrix)
-library(tidyverse)
+library(stringr)
 
 args <- commandArgs(trailingOnly=TRUE)
 n <- length(args)
