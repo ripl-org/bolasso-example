@@ -12,6 +12,7 @@ BOLASSO_THRESHOLD = 0.9
 # build caches the results for others to retrieve.
 env.CacheDir("cache")
 
+# NOTE: This is set up to run in the NJ Dev AWS Account
 client_args = {
     'region_name': 'us-west-2'
 }
