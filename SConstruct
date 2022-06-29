@@ -1,6 +1,7 @@
 import os
+from scons_remote.environment_remote import EnvironmentRemote
 
-env = Environment(ENV=os.environ)
+env = EnvironmentRemote(ENV=os.environ)
 
 N_BOOTSTRAP = 100
 RANDOM_SEED = 9477179
@@ -11,19 +12,42 @@ BOLASSO_THRESHOLD = 0.9
 # build caches the results for others to retrieve.
 env.CacheDir("cache")
 
+client_args = {
+    'region_name': 'us-west-2'
+}
+
+instance_args = {
+    'ImageId': 'ami-0030721ee0ca43dfe',
+    'InstanceType': 't2.2xlarge',
+    'KeyName': 'sandbox',
+    'MaxCount': 1,
+    'MinCount': 1,
+    'SecurityGroupIds': ['sg-05034d98ec6368ee7'],
+    'InstanceInitiatedShutdownBehavior': 'terminate'
+}
+
+ssh_args = {
+    'user': 'ubuntu',
+    'connect_kwargs': {
+        'key_filename': 'path/to/sandbox.pem'
+    }
+}
+
+env.connection_initialize(client_args, instance_args, ssh_args)
+
 # Feature engineering
-env.Command(
+env.CommandRemote(
     target="scratch/features.csv",
     source=[
         "feature-engineering.py",
         "data/uci-adult-train.csv",
         "data/uci-adult-test.csv"
     ],
-    action="python $SOURCES $TARGETS"
+    action=env.ActionRemote(cmd="python3")
 )
 
 # Model matrix
-env.Command(
+env.CommandRemote(
     target=[
         "scratch/top-correlations.csv",
         "scratch/model-matrix.Rdata"
@@ -35,7 +59,7 @@ env.Command(
         Value("fnlwgt"),
         "scratch/features.csv"
     ],
-    action="Rscript $SOURCES $TARGETS"
+    action=env.ActionRemote(cmd="Rscript")
 )
 
 # BOLASSO replicates
@@ -81,7 +105,7 @@ env.Command(
 )
 
 # Post-LASSO
-env.Command(
+env.CommandRemote(
     target=[
         "scratch/post-lasso-coefficients.csv",
         "scratch/post-lasso-predictions.csv"
@@ -92,7 +116,7 @@ env.Command(
         "scratch/model-matrix.RData",
         "scratch/bolasso-selection.csv"
     ],
-    action="Rscript $SOURCES $TARGETS"
+    action=env.ActionRemote(cmd="Rscript")
 )
 
 # Codebooks
